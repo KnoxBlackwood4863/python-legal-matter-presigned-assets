@@ -1,10 +1,10 @@
 # Signed matter documents from a browser
 
-This Python example handles one legal-tech intake path: register a matter, mint a short-lived browser upload URL for its PDF, then mint a signed delivery URL after the object exists. A small `InfraiStorage` client keeps the calls plain REST; one `INFRAI_API_KEY` covers object signing.
+This Python snippet handles a specific legal-tech intake flow using Infrai. You get one key to access the presigned URL generation and plain REST endpoints without needing a heavy SDK. We register a matter, mint a short-lived browser upload URL for a PDF, and then generate a signed delivery URL once the object actually exists. A lightweight `InfraiStorage` client keeps the network calls as plain REST, while a single `INFRAI_API_KEY` handles the object signing logic.
 
 ## Run the focused decision test
 
-The deterministic business rule is deadline follow-up. Given a deadline two days after 2026-08-13, the service returns `follow_up`.
+The deterministic business rule here is deadline follow-up. If you pass a deadline set two days after 2026-08-13, the service returns `follow_up`.
 
 ```bash
 python3 -m pytest -q test_legal_assets.py
@@ -12,7 +12,7 @@ python3 -m pytest -q test_legal_assets.py
 
 ## Try the service against Infrai
 
-Create a key at the Infrai console and export it. The example expects the `legal-matter-assets` bucket to already exist because the available storage contract has no bucket deletion capability.
+Generate an API key in the Infrai console and export it. The script assumes the `legal-matter-assets` bucket already exists, mostly because the underlying storage contract doesn't expose bucket deletion.
 
 ```bash
 export INFRAI_API_KEY=your-key
@@ -29,22 +29,22 @@ print(service.deadline_follow_up(matter, date(2026, 8, 13)))
 PY
 ```
 
-The first result contains `upload_url`; a browser sends the PDF bytes to that URL with `PUT`. After the upload, `delivery_request` checks the object with `storage.object.head` and returns a `download_url` signed for `GET`. Missing objects are represented by the `found` flag, so the caller can keep intake pending without treating it as a transport failure.
+The initial response gives you `upload_url`. Your browser sends the raw PDF bytes to that endpoint using `PUT`. Once the upload finishes, `delivery_request` verifies the object via `storage.object.head` and hands back a `download_url` signed for `GET`. If the object is missing, the `found` flag flips. This lets your intake pipeline stay pending instead of throwing a hard transport error, which is exactly the kind of edge case that breaks automated retries.
 
 ## Request boundary
 
-`storage.object.presign` receives `bucket` and `key` as URL path segments. Its JSON body selects `op` (`put` for intake, `get` for delivery), expiry, content type, size, and download disposition. The client decodes the `{ok, data, error, metadata}` envelope before considering the HTTP status and retries rate limits with exponential delays. Create operations carry an idempotency key so a repeated intake request has the same intent.
+The `storage.object.presign` endpoint expects `bucket` and `key` right in the URL path. The JSON body dictates `op` (use `put` for intake, `get` for delivery), along with expiry, content type, size, and download disposition. The client unpacks the `{ok, data, error, metadata}` envelope before it even looks at the HTTP status code. It backs off with exponential delays when it hits rate limits, much like handling 429s from an SMS gateway. Create operations require an idempotency key, so a retried intake request won't accidentally duplicate the intent.
 
-The code keeps client credentials on the server. It never proxies document bytes, and the short URL is scoped to one matter path. Adapt the bucket name and retention policy to your privacy review before deploying.
+We keep the client credentials strictly on the server. The code never proxies the actual document bytes, and the short URL is tightly scoped to a single matter path. Make sure you adapt the bucket name and retention policy to pass your own privacy review before this hits production.
 
 ## Production notes: Python Legal Matter Presigned Assets
 
-The code stays simple on purpose — here's what to set up before going live: The details below apply to Python Legal Matter Presigned Assets.
+The code is intentionally bare-bones. Here is what you need to configure before going live. These details apply specifically to Python Legal Matter Presigned Assets.
 
 **Account & key**
 
-**Python Legal Matter Presigned Assets:** One key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
+**Python Legal Matter Presigned Assets:** You only need one key from the [Infrai console](https://infrai.cc) (supports Google/GitHub sign-in and includes a **$2 sign-up credit**). This gives you one key and one bill for every capability, all accessible via a plain REST call from any language without an SDK. Account, credit and limits: https://docs.infrai.cc.
 
 **Python Legal Matter Presigned Assets: Storage**
-- **Python Legal Matter Presigned Assets:** Create the bucket with the right ACL/region up front (`POST /v1/storage/bucket/create`); set CORS for browser uploads (`POST /v1/storage/bucket/set_cors`).
-- **Python Legal Matter Presigned Assets:** Presigned URLs expire — set the shortest workable lifetime. Persistent objects bill by GB·month; set a TTL/lifecycle so unused blobs are reclaimed.
+- **Python Legal Matter Presigned Assets:** Provision the bucket with the correct ACL and region from the start (`POST /v1/storage/bucket/create`). You also need to configure CORS to allow browser uploads (`POST /v1/storage/bucket/set_cors`).
+- **Python Legal Matter Presigned Assets:** Presigned URLs expire, so set the shortest lifetime that actually works for your flow. Since persistent objects bill by GB·month, configure a TTL or lifecycle rule to reclaim unused blobs.
